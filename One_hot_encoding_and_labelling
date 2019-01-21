@@ -1,0 +1,92 @@
+with t1 as
+(
+select
+    user_id, 
+    extract(month from delivery_date) as month
+from kulina.fact_deliveries
+where extract(year from delivery_date)=2018
+group by 1,2
+),
+t2 as(
+select 
+    user_id,
+    month-1 as month_after
+from t1
+),
+churn_identification as
+(
+select 
+    t1.user_id,
+    month,
+    case when month_after is not null then "not-churn" else "churn" end as churn_identification
+from t1 left join t2 on t1.user_id=t2.user_id and t1.month=t2.month_after
+),
+user_deliveries as 
+(
+select
+    user_id,
+    extract(month from delivery_date) as month,
+    sum(case when product="Basic Lunch" then 1 else 0 end) as p_basic_lunch,
+    sum(case when product="Deluxe Lunch" then 1 else 0 end) as p_deluxe_lunch,
+    sum(case when product="Basic Buka" then 1 else 0 end) as p_basic_buka,
+    sum(case when product="Deluxe Buka" then 1 else 0 end) as p_deluxe_buka,
+    sum(case when product="Marketplace" then 1 else 0 end) as p_marketplace,
+    sum(case when product="Healthy Lunch" then 1 else 0 end) as p_healthy_lunch,
+    sum(case when give_rating is true then 1 else 0 end) as gr_true,
+    sum(case when give_rating is false then 1 else 0 end) as gr_false,
+    sum(total_boxes) as total_boxes,
+    sum(case when area="CBD" then 1 else 0 end) as CBD,
+    sum(case when area="Non-CBD" then 1 else 0 end) as Non_CBD,
+    sum(case when area="Tangerang" then 1 else 0 end) as Tangerang
+from kulina.fact_deliveries d join kulina.dim_locations l on d.location_id=l.id
+where extract(year from delivery_date)=2018
+group by 1,2
+),
+user_skip as
+(
+select 
+    user_id,
+    extract(month from pass_date) as month,
+    sum(case when reason="NOT_IN_LOCATION" then 1 else 0 end) as r_location,
+    sum(case when reason="OTHER" or reason="--" then 1 else 0 end) as r_other,
+    sum(case when reason="MENU" then 1 else 0 end) as r_menu,
+    sum(case when reason="HAVE_ANOTHER_LUNCH" then 1 else 0 end) as r_lunch,
+    sum(case when reason="COMPLIMENT" then 1 else 0 end) as r_compliment
+from kudw_transform.fact_skips
+where extract(year from pass_date)=2018
+group by 1,2
+),
+user_cashback as
+(
+select
+    user_id,
+    extract(month from delivery_date) as month,
+    sum(case when cashback_type="OTHER" then 1 else 0 end) as ct_other,
+    sum(case when cashback_type="REAL_CASHBACK" then 1 else 0 end) as ct_real,
+    sum(case when cashback_type="REWARDS" then 1 else 0 end) as ct_rewards,
+    sum(case when cashback_type="FAKE_CASHBACK" then 1 else 0 end) as ct_fake,
+    sum(amount) as total_cashback,
+    avg(people_in_the_same_building) as people_building
+from kulina.fact_cashbacks
+where extract(year from delivery_date)=2018
+group by 1,2
+)
+
+select
+    d.*,
+    case when r_location is null then 0 else r_location end as r_location,
+    case when r_other is null then 0 else r_other end as r_other,
+    case when r_menu is null then 0 else r_menu end as r_menu, 
+    case when r_lunch is null then 0 else r_lunch end as r_lunch,
+    case when r_compliment is null then 0 else r_compliment end as r_compliment,
+    case when ct_other is null then 0 else ct_other end as ct_other,
+    case when ct_real is null then 0 else ct_real end as ct_real,
+    case when ct_rewards is null then 0 else ct_rewards end as ct_rewards,
+    case when ct_fake is null then 0 else ct_fake end as ct_fake,
+    case when total_cashback is null then 0 else total_cashback end as total_cashback,
+    case when people_building is null then 0 else people_building end as people_building,
+    churn_identification
+from user_deliveries d 
+left join user_skip s on d.user_id=s.user_id and d.month=s.month
+left join user_cashback c on d.user_id=c.user_id and d.month=c.month 
+left join churn_identification ci on d.user_id=ci.user_id and d.month=ci.month
