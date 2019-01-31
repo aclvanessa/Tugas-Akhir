@@ -1,0 +1,76 @@
+library(readr)
+library(dplyr)
+library(DT)
+#data yang sudah diambil dari BigQuery
+data123<-read_csv('data123.csv')
+data4567<-read_csv('data4567.csv')
+data8910<-read_csv('data8910.csv')
+data1112<-read_csv('data1112.csv')
+# Menggabungkan data
+data<-rbind(data123,data4567,data8910,data1112)
+
+# Membuat MAU Mixpanel
+data$agemonth<-data$month-data$min_month
+data$month_name <- month.abb[data$min_month]
+MAU <- reshape2::dcast(data,month_name~agemonth,
+                       value.var="consumer_name",
+                       fun.aggregate = length)
+MAU <- MAU[order(match(MAU$month_name, month.abb)), ]
+# Memperbagus visualisi MAU Mixpanel
+breaks <- quantile(MAU[,3:13], probs = seq(.05, .95, .05), na.rm = TRUE)
+colors <- sapply(round(seq(155, 80, length.out = length(breaks) + 1), 0),
+                 function(x){ rgb(x,x,155, maxColorValue = 155) } )
+DT::datatable(MAU,
+              class = 'cell-border stripe',
+              rownames = FALSE,
+              options = list(
+                ordering=F,
+                dom = 't',
+                pageLength = 12) ) %>%
+  formatStyle("0",
+              backgroundColor = 'lightgrey',
+              fontWeight = 'bold') %>%
+  formatStyle(names(MAU[c(-1,-2)]),fontWeight = 'bold',color = 'white', backgroundColor = styleInterval(breaks,colors))
+
+# Membangun cohort analysis untuk retention table
+retention <- MAU
+# Kalkulasi persentasi dengan menggunakan DT untuk format %
+# Daripada kolum '0' dimuat dalam persen 100%
+# akan lebih bermakna jika dia dipersentasekan dalam jumlah aslinya
+for (i in rev(3:ncol(retention))){
+  retention[,i] <- round(retention[,i]/retention[,2],4)
+}
+rm(i)
+
+# Mencari nilai untuk rata=ratanya
+retention.av <- retention
+
+# Mengganti nilai 0 dalam baris dengan NA
+# Dilakukan untuk menghindari masalah pembagian dengan 0
+retention.av[retention.av == 0.0000] <- NA
+avgs.ret <- round(apply(retention.av[,-1],2,mean, na.rm=TRUE),4)
+# Mengembalikan nya lagi dalam bentuk 0
+avgs.ret <- c(0,avgs.ret)
+
+# Menggabungkan baris rata-rata ke data retention semula
+retention <- rbind(retention,avgs.ret)
+
+
+# Desain tabel retention
+breaks <- quantile(retention[,3:13], probs = seq(.05, .95, .05), na.rm = TRUE)
+colors <- sapply(round(seq(155, 80, length.out = length(breaks) + 1), 0),
+                 function(x){ rgb(x,x,155, maxColorValue = 155) } )
+# The retention rate mixpanel
+DT::datatable(retention,
+              class = 'cell-border stripe',
+              rownames = FALSE,
+              options = list(
+                ordering=F,
+                dom = 't',
+                pageLength = 13) ) %>%
+  formatStyle("0",
+              backgroundColor = 'lightgrey',
+              fontWeight = 'bold') %>%
+  formatPercentage(c(3:13),2) %>% # We don't want column 0 in %
+  formatStyle("1", fontWeight = 'bold') %>%
+  formatStyle(names(retention[c(-1,-2)]),color = 'white',fontWeight = 'bold', backgroundColor = styleInterval(breaks,colors))
