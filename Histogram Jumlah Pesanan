@@ -1,0 +1,10 @@
+library(ggplot2)
+library(readr)
+library(ggplot2)
+user<-read_csv('/Users/aclvanessa/Downloads/New_Query_2019_01_30 (1).csv')
+ggplot(user[user$total<100,], aes(x=total, fill="red")) +
+  geom_histogram(binwidth=5, alpha=.5, position="identity") +
+  geom_density(alpha=.3) + 
+  labs(title="Histogram Jumlah Pesanan 2018") +
+  xlab("Jumlah pesanan 2018") + ylab("Jumlah pelanggan")
+
